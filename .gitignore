@@ -1,0 +1,21 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 本地数据缓存
+data/items.json
+data/metadata.json
+data/query.log
+data/world_query.log
+
+# 其他
+.env
+*.log
