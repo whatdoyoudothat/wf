@@ -444,9 +444,9 @@ def interactive_main() -> int:
                 except Exception as e:
                     print(f"[错误] world 查询异常: {e}")
             else:
-                # 否则做 price 搜索
+                # 否则仅搜索不查价（默认行为）
                 try:
-                    price_main([line])
+                    price_main(["-s", line])
                 except Exception as e:
                     print(f"[错误] 查询失败: {e}")
 
