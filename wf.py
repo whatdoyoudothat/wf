@@ -29,6 +29,7 @@ if str(BASE_DIR) not in sys.path:
 from price_searcher import PriceSearcher, interactive_mode as price_interactive
 from price_searcher import print_search_results, DATA_DIR, QUERY_LOG_FILE
 from world_searcher import WorldSearcher, interactive_mode as world_interactive
+from world_searcher import ENDPOINT_INFO, ALIAS_MAP as WORLD_ALIAS_MAP
 
 SYNONYMS_FILE = BASE_DIR / "data" / "synonyms.json"
 
@@ -422,11 +423,32 @@ def interactive_main() -> int:
                 print(f"[错误] 获取状态失败: {e}")
 
         else:
-            # 直接输入关键词，尝试先做 price 搜索
-            try:
-                price_main([line])
-            except Exception as e:
-                print(f"[错误] 查询失败: {e}")
+            # 先判断是否是世界状态端点名或别名
+            first_word_lower = first_word
+            # 检查是否匹配世界状态端点名
+            is_world_endpoint = first_word_lower in ENDPOINT_INFO
+            # 检查是否匹配世界状态别名
+            if not is_world_endpoint:
+                is_world_endpoint = first_word_lower in WORLD_ALIAS_MAP
+            # 检查是否匹配端点中文名
+            if not is_world_endpoint:
+                for ep_key, (_, cn_name, _, _) in ENDPOINT_INFO.items():
+                    if cn_name and first_word_lower == cn_name.lower():
+                        is_world_endpoint = True
+                        break
+
+            if is_world_endpoint:
+                # 是世界状态端点，直接查询
+                try:
+                    world_main([line])
+                except Exception as e:
+                    print(f"[错误] world 查询异常: {e}")
+            else:
+                # 否则做 price 搜索
+                try:
+                    price_main([line])
+                except Exception as e:
+                    print(f"[错误] 查询失败: {e}")
 
     return 0
 
