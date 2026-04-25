@@ -4,9 +4,9 @@
 
 ## 功能概览
 
-- **价格搜索** — 基于 [api.warframe.market](https://api.warframe.market) 查询物品买卖价格
+- **价格搜索** — 基于 [api.warframe.market](https://api.warframe.market) 查询物品并显示缩略图
 - **世界状态** — 基于 [api.warframestat.us](https://api.warframestat.us) 查询游戏实时状态
-- **别名管理** — 社区别名库，支持中文/英文别名搜索
+- **别名管理** — 社区别名库，支持中文/英文别名搜索与交互式管理
 
 ## 快速开始
 
@@ -14,15 +14,14 @@
 # 交互式模式（推荐）
 python wf.py
 
-# 直接查询物品价格
-python wf.py price 牛
-python wf.py price 生命力
-python wf.py 价格 牛
+# 直接搜索物品并显示缩略图
+python wf.py 牛
+python wf.py 生命力
 
 # 查询世界状态
-python wf.py world sortie
-python wf.py world 奸商
-python wf.py 世界 突击
+python wf.py sortie
+python wf.py 奸商
+python wf.py 突击
 ```
 
 ## 交互式模式
@@ -33,63 +32,69 @@ python wf.py 世界 突击
 
 | 输入 | 说明 |
 |------|------|
-| `牛` | 直接输入关键词搜索价格 |
+| `牛` | 直接输入关键词搜索并显示缩略图 |
 | `price 牛` | 使用 price 命令 |
 | `价格 牛` | 中文命令 |
 | `价格牛` | 不带空格组合输入 |
 | `牛价格` | 关键词+后缀组合 |
 | `物品牛` | 物品+关键词组合 |
 | `牛物品` | 关键词+物品组合 |
-| `price -s 牛` | 仅搜索不查价 |
+
+> **注意**: 价格搜索只显示物品缩略图，不自动查询价格。缩略图优先使用本地缓存，没有则从 API 下载。
 
 ### 世界状态
 
 | 输入 | 说明 |
 |------|------|
-| `world sortie` | 查询突击任务 |
-| `world fissures` | 查询虚空裂缝 |
-| `world cetusCycle` | 查询希图斯循环 |
-| `world -a` | 查询完整世界状态 |
-| `world list` | 列出所有可用端点 |
-| `世界 突击` | 中文命令 |
-| `状态 裂缝` | 中文命令 |
+| `sortie` | 查询突击任务 |
+| `fissures` | 查询虚空裂缝 |
+| `cetusCycle` | 查询希图斯循环 |
+| `-a` | 查询完整世界状态 |
+| `list` | 列出所有可用端点 |
+| `突击` | 中文命令 |
+| `裂缝` | 中文命令 |
 
-### 其他命令
+### 别名管理
 
 | 命令 | 说明 |
 |------|------|
 | `synonyms list` | 列出所有社区别名 |
 | `synonyms search 牛` | 搜索别名 |
 | `synonyms item rhino_prime_set` | 查看物品别名 |
-| `stats` | 显示本地数据状态 |
-| `list` | 显示可用命令 |
-| `refresh` | 强制刷新物品列表 |
-| `clear` | 清除本地缓存 |
+| `alias` | 进入交互式别名管理器（添加/删除别名） |
+
+### 其他命令
+
+| 命令 | 说明 |
+|------|------|
 | `help` | 显示帮助 |
+| `list` | 显示可用命令列表 |
 | `exit` | 退出 |
 
 ## 命令行模式
 
 ```bash
-# 价格搜索
+# 价格搜索（显示缩略图）
+python wf.py <关键词>
 python wf.py price <关键词>
-python wf.py price -s <关键词>     # 仅搜索不查价
-python wf.py price -r              # 强制刷新物品列表
 
 # 世界状态
+python wf.py <端点名>
 python wf.py world <端点名>
-python wf.py world -a              # 完整世界状态
-python wf.py world list            # 列出所有端点
+python wf.py -a                    # 完整世界状态
 
 # 别名管理
 python wf.py synonyms list
 python wf.py synonyms search <关键词>
 python wf.py synonyms item <slug>
+python wf.py alias                 # 交互式别名管理器
 
 # 其他
-python wf.py stats                 # 数据状态
+python wf.py help                  # 显示帮助
 python wf.py list                  # 命令列表
 python wf.py -r                    # 强制刷新
+python wf.py stats                 # 数据状态
+python wf.py clear                 # 清除缓存
 ```
 
 ## 世界状态端点
@@ -134,6 +139,7 @@ python wf.py -r                    # 强制刷新
 | `items.json` | 物品列表缓存（API 原始数据） |
 | `metadata.json` | 元数据（更新时间等） |
 | `synonyms.json` | 社区别名映射 |
+| `thumbs/` | 物品缩略图缓存目录 |
 | `query.log` | 价格查询日志 |
 | `world_query.log` | 世界状态查询日志 |
 

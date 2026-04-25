@@ -110,6 +110,18 @@ ALIAS_MAP: Dict[str, str] = {
     "突击": "sortie", "钢铁": "steelPath", "集团": "syndicateMissions",
     "时间": "timestamp", "商人": "voidTrader",
     "科研": "archimedeas", "赤毒": "kuva",
+    # 完整中文名
+    "执政官猎杀": "archonHunt", "执行官猎杀": "archonHunt",
+    "双衍王境": "duviriCycle", "希图斯循环": "cetusCycle",
+    "魔胎循环": "cambionCycle", "金星循环": "vallisCycle",
+    "地球循环": "earthCycle", "扎里曼循环": "zarimanCycle",
+    "虚空裂缝": "fissures", "每日特惠": "dailyDeals",
+    "午夜电波": "nightwave", "钢铁之路": "steelPath",
+    "集团任务": "syndicateMissions", "虚空商人": "voidTrader",
+    "遗物商人": "vaultTrader", "深层科研": "archimedeas",
+    "全局加成": "globalUpgrades", "武形秘仪": "conclaveChallenges",
+    "建造进度": "constructionProgress", "限时折扣": "flashSales",
+    "永久敌人": "persistentEnemies", "黑暗区": "darkSectors",
 }
 
 
@@ -965,13 +977,21 @@ class WorldSearcher:
                             return cand
             except (json.JSONDecodeError, IOError):
                 pass
-        # 3. 完整匹配
+        # 3. 完整匹配端点 key
         for ek in ENDPOINT_INFO:
             if ek.lower() == key:
                 return ek
-        # 4. 子串匹配
+        # 4. 匹配端点中文名
+        for ek, (_, cn_name, _, _) in ENDPOINT_INFO.items():
+            if cn_name and cn_name.lower() == key:
+                return ek
+        # 5. 子串匹配端点 key
         for ek in ENDPOINT_INFO:
             if key in ek.lower():
+                return ek
+        # 6. 子串匹配端点中文名
+        for ek, (_, cn_name, _, _) in ENDPOINT_INFO.items():
+            if cn_name and key in cn_name.lower():
                 return ek
         return None
 

@@ -30,6 +30,7 @@ from price_searcher import PriceSearcher, interactive_mode as price_interactive
 from price_searcher import print_search_results, DATA_DIR, QUERY_LOG_FILE
 from world_searcher import WorldSearcher, interactive_mode as world_interactive
 from world_searcher import ENDPOINT_INFO, ALIAS_MAP as WORLD_ALIAS_MAP
+from alias_manager import interactive_mode as alias_interactive_mode
 
 SYNONYMS_FILE = BASE_DIR / "data" / "synonyms.json"
 
@@ -153,6 +154,9 @@ def main() -> int:
     elif cmd in ("synonyms", "synonym", "别名", "同义词"):
         return cmd_synonyms(args[1:])
 
+    elif cmd in ("alias", "al", "管理别名"):
+        return alias_main(args[1:])
+
     elif cmd in ("-r", "--refresh", "刷新"):
         # 强制刷新
         sys.argv = [sys.argv[0], "-r"] + args[1:]
@@ -175,6 +179,16 @@ def main() -> int:
         print("  使用 'wf help' 或 'wf 帮助' 查看可用命令")
         return 1
 
+
+
+def alias_main(args: list[str]) -> int:
+    """别名管理器子命令"""
+    if not args:
+        alias_interactive_mode()
+        return 0
+    sys.argv = [sys.argv[0]] + args
+    from alias_manager import main as alias_main_func
+    return alias_main_func()
 
 
 def cmd_stats() -> int:
@@ -279,6 +293,7 @@ def interactive_main() -> int:
             "price": "price", "价格": "price", "物价": "price",
             "world": "world", "世界": "world", "状态": "world",
             "synonyms": "synonyms", "别名": "synonyms", "同义词": "synonyms",
+            "alias": "alias", "al": "alias", "管理别名": "alias",
             "list": "list", "列表": "list",
             "help": "help", "帮助": "help", "?": "help",
             "clear": "clear", "清除": "clear",
@@ -329,20 +344,7 @@ def interactive_main() -> int:
             break
 
         elif resolved_cmd == "help":
-            print()
-            print("  [帮助]")
-            print("  price / 价格 <关键词>       - 搜索物品价格")
-            print("  price -s <关键词>           - 仅搜索不查价")
-            print("  world / 世界 <端点>         - 查询世界状态端点")
-            print("  world -a / 世界 -a          - 完整世界状态")
-            print("  synonyms / 别名 list        - 列出所有社区别名")
-            print("  synonyms / 别名 search <词> - 搜索别名")
-            print("  list / 列表                 - 显示可用命令")
-            print("  clear / 清除                - 清除本地缓存")
-            print("  stats / 信息                - 显示本地数据状态")
-            print("  refresh / 刷新              - 强制刷新物品列表")
-            print("  exit / 退出                 - 退出")
-            print()
+            print_help()
 
         elif resolved_cmd == "price":
             rest = line[len(first_word):].strip()
@@ -374,6 +376,14 @@ def interactive_main() -> int:
                 cmd_synonyms(rest_args)
             except Exception as e:
                 print(f"[错误] synonyms 查询异常: {e}")
+
+        elif resolved_cmd == "alias":
+            rest = line[len(first_word):].strip()
+            rest_args = rest.split() if rest else []
+            try:
+                alias_main(rest_args)
+            except Exception as e:
+                print(f"[错误] alias 查询异常: {e}")
 
         elif resolved_cmd == "list":
             print_cmd_list()
@@ -423,32 +433,21 @@ def interactive_main() -> int:
                 print(f"[错误] 获取状态失败: {e}")
 
         else:
-            # 先判断是否是世界状态端点名或别名
-            first_word_lower = first_word
-            # 检查是否匹配世界状态端点名
-            is_world_endpoint = first_word_lower in ENDPOINT_INFO
-            # 检查是否匹配世界状态别名
-            if not is_world_endpoint:
-                is_world_endpoint = first_word_lower in WORLD_ALIAS_MAP
-            # 检查是否匹配端点中文名
-            if not is_world_endpoint:
-                for ep_key, (_, cn_name, _, _) in ENDPOINT_INFO.items():
-                    if cn_name and first_word_lower == cn_name.lower():
-                        is_world_endpoint = True
-                        break
-
-            if is_world_endpoint:
-                # 是世界状态端点，直接查询
-                try:
+            # 先尝试作为世界状态端点查询（让 _resolve_endpoint 做完整匹配）
+            # 如果 _resolve_endpoint 能解析，就走 world 查询
+            # 否则走 price 搜索+查价+显示图片
+            try:
+                # 临时创建一个 WorldSearcher 实例来解析端点
+                from world_searcher import WorldSearcher as _WS
+                _ws = _WS()
+                resolved = _ws._resolve_endpoint(line)
+                if resolved is not None:
                     world_main([line])
-                except Exception as e:
-                    print(f"[错误] world 查询异常: {e}")
-            else:
-                # 否则仅搜索不查价（默认行为）
-                try:
-                    price_main(["-s", line])
-                except Exception as e:
-                    print(f"[错误] 查询失败: {e}")
+                else:
+                    # 默认：搜索+查价+显示图片
+                    price_main([line])
+            except Exception as e:
+                print(f"[错误] 查询失败: {e}")
 
     return 0
 
@@ -460,42 +459,78 @@ def print_help() -> None:
     print()
     print("  用法: wf <命令> [参数]")
     print()
-    print("  命令:")
-    print("    price <关键词>        搜索物品价格")
-    print("    price -s <关键词>     仅搜索不查价")
-    print("    price -r              强制刷新物品列表")
-    print("    world <端点>          查询世界状态端点")
+    print("  [价格搜索]")
+    print("    <关键词>              直接搜索物品并显示缩略图")
+    print("    price <关键词>        搜索物品并显示缩略图")
+    print("    价格 <关键词>         中文命令")
+    print("    价格<关键词>          不带空格组合输入")
+    print("    <关键词>价格          关键词+后缀组合")
+    print()
+    print("  [世界状态]")
+    print("    <端点名>              直接查询世界状态端点")
+    print("    world <端点名>        查询世界状态端点")
     print("    world -a              完整世界状态")
     print("    world list            列出所有世界状态端点")
+    print("    世界 <端点名>         中文命令")
+    print("    状态 <端点名>         中文命令")
+    print()
+    print("  世界状态端点列表:")
+    print(f"  {'命令':<24s} {'中文名':<12s} {'说明'}")
+    print(f"  {'─'*56}")
+    for op_id, (field, cn_name, desc, _) in sorted(ENDPOINT_INFO.items()):
+        print(f"  {op_id:<24s} {cn_name:<12s} {desc}")
+    print()
+    print("  [别名管理]")
     print("    synonyms list         列出所有社区别名")
-    print("    synonyms search <词>  搜索别名")
-    print("    synonyms item <slug>  查看物品别名")
-    print("    stats                 显示本地数据状态")
-    print("    list                  列出所有可用命令")
-    print("    无参数                进入交互式模式")
+    print("    synonyms search <词>  搜索别名（模糊匹配）")
+    print("    synonyms search -e <词> 精确搜索别名")
+    print("    synonyms item <slug>  查看指定物品的所有别名")
+    print("    别名 list             中文命令")
+    print("    别名 search <词>      中文命令")
     print()
     print("  示例:")
-    print("    wf price 牛")
-    print("    wf price -s 生命力")
-    print("    wf world sortie")
-    print("    wf world 奸商")
-    print("    wf synonyms search 牛")
+    print("    wf 牛")
+    print("    wf 奸商")
     print()
 
 
 def print_cmd_list() -> None:
     print()
     print("  [可用命令]")
-    print("  wf                              - 交互式模式")
-    print("  wf price <关键词>                - 搜索物品价格")
-    print("  wf price -s <关键词>             - 仅搜索不查价")
-    print("  wf price -r                     - 强制刷新物品列表")
-    print("  wf world <端点名>                - 查询世界状态")
-    print("  wf world -a                     - 完整世界状态")
-    print("  wf synonyms list                - 列出所有别名")
-    print("  wf synonyms search <关键词>      - 搜索别名")
-    print("  wf stats                        - 数据状态")
-    print("  wf list                         - 显示此列表")
+    print("  ────────────────────────────────────────────")
+    print("  [价格搜索]")
+    print("    <关键词>              直接搜索物品并显示缩略图")
+    print("    price <关键词>        搜索物品并显示缩略图")
+    print("    价格 <关键词>         中文命令")
+    print("    价格<关键词>          不带空格组合输入")
+    print("    <关键词>价格          关键词+后缀组合")
+    print()
+    print("  [世界状态]")
+    print("    <端点名>              直接查询世界状态端点")
+    print("    world <端点名>        查询世界状态端点")
+    print("    world -a              完整世界状态")
+    print("    world list            列出所有世界状态端点")
+    print("    世界 <端点名>         中文命令")
+    print("    状态 <端点名>         中文命令")
+    print()
+    print("  世界状态端点列表:")
+    print(f"  {'命令':<24s} {'中文名':<12s} {'说明'}")
+    print(f"  {'─'*56}")
+    for op_id, (field, cn_name, desc, _) in sorted(ENDPOINT_INFO.items()):
+        print(f"  {op_id:<24s} {cn_name:<12s} {desc}")
+    print()
+    print("  [别名管理]")
+    print("    synonyms list         列出所有社区别名")
+    print("    synonyms search <词>  搜索别名（模糊匹配）")
+    print("    synonyms search -e <词> 精确搜索别名")
+    print("    synonyms item <slug>  查看指定物品的所有别名")
+    print("    别名 list             中文命令")
+    print("    别名 search <词>      中文命令")
+    print()
+    print("  [其他命令]")
+    print("    list / 列表           显示可用命令列表")
+    print("    help / 帮助           显示此帮助")
+    print("    exit / 退出           退出程序")
     print()
 
 

@@ -28,6 +28,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from wf_api_client import WarframeAPIClient, APIError
 
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
 
 # ============================================================================
 # 常量配置
@@ -43,6 +49,7 @@ ITEMS_FILE = DATA_DIR / "items.json"         # 全部物品原始 API 数据
 METADATA_FILE = DATA_DIR / "metadata.json"   # 元数据（更新时间等）
 QUERY_LOG_FILE = DATA_DIR / "query.log"      # 简单查询日志（纯文本）
 SYNONYMS_FILE = DATA_DIR / "synonyms.json"   # 近义词/社区别名映射
+THUMBS_DIR = DATA_DIR / "thumbs"             # 物品缩略图缓存目录
 
 
 # 支持的语言和平台
@@ -416,6 +423,114 @@ class ItemIndex:
 
 
 # ============================================================================
+# 缩略图下载与显示
+# ============================================================================
+
+THUMB_CDN_BASE = "https://warframe.market/static/assets"
+
+
+def get_thumb_path(item: ItemInfo) -> Optional[Path]:
+    """获取物品缩略图的本地缓存路径"""
+    # 优先用英文的 thumb，因为所有语言共用同一张图
+    thumb_rel = None
+    for lang in ("en", "zh-hans", "zh-hant"):
+        lang_data = item.i18n.get(lang, {})
+        thumb_rel = lang_data.get("thumb") or lang_data.get("icon")
+        if thumb_rel:
+            break
+    if not thumb_rel:
+        return None
+    # 用 slug 作为文件名，保留扩展名
+    ext = Path(thumb_rel).suffix or ".png"
+    return THUMBS_DIR / f"{item.slug}{ext}"
+
+
+def download_thumb(item: ItemInfo) -> Tuple[Optional[Path], Optional[str]]:
+    """下载物品缩略图到本地缓存，返回 (本地路径, 错误信息)"""
+    # 找 thumb 路径
+    thumb_rel = None
+    for lang in ("en", "zh-hans", "zh-hant"):
+        lang_data = item.i18n.get(lang, {})
+        thumb_rel = lang_data.get("thumb") or lang_data.get("icon")
+        if thumb_rel:
+            break
+    if not thumb_rel:
+        return None, "该物品没有缩略图数据"
+
+    local_path = get_thumb_path(item)
+    if local_path and local_path.exists():
+        return local_path, None  # 已缓存
+
+    url = f"{THUMB_CDN_BASE}/{thumb_rel}"
+    THUMBS_DIR.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import requests
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            with open(local_path, "wb") as f:
+                f.write(resp.content)
+            return local_path, None
+        else:
+            return None, f"HTTP {resp.status_code}: {resp.reason}"
+    except requests.exceptions.Timeout:
+        return None, "请求超时（10秒）"
+    except requests.exceptions.ConnectionError:
+        return None, "网络连接失败（无法访问 cdn.warframe.market）"
+    except Exception as e:
+        return None, f"未知错误: {type(e).__name__}: {e}"
+
+
+def show_thumb(item: ItemInfo) -> None:
+    """显示物品缩略图（优先本地缓存，没有则从 API 下载）"""
+    # 先获取缩略图 URL
+    thumb_rel = None
+    for lang in ("en", "zh-hans", "zh-hant"):
+        lang_data = item.i18n.get(lang, {})
+        thumb_rel = lang_data.get("thumb") or lang_data.get("icon")
+        if thumb_rel:
+            break
+
+    if thumb_rel:
+        img_url = f"{THUMB_CDN_BASE}/{thumb_rel}"
+        print(f"  [链接] {img_url}")
+
+    # 优先检查本地缓存
+    local_path = get_thumb_path(item)
+    if local_path and local_path.exists():
+        print(f"  [缓存] 使用本地缓存: {local_path}")
+    else:
+        # 本地没有，从 API 下载
+        local_path, error = download_thumb(item)
+        if error:
+            print(f"  [错误] 下载缩略图失败: {error}")
+            return
+
+    if not local_path or not local_path.exists():
+        print("  [错误] 缩略图文件不存在")
+        return
+
+    if HAS_PIL:
+        try:
+            img = Image.open(local_path)
+            img.show()
+            return
+        except Exception:
+            pass
+
+    # 回退：用系统默认程序打开
+    import subprocess
+    import os
+    try:
+        if os.name == "nt":  # Windows
+            os.startfile(local_path)
+        elif os.name == "posix":
+            subprocess.run(["open", str(local_path)], check=False)
+    except Exception:
+        pass
+
+
+# ============================================================================
 # 价格查询与格式化输出
 # ============================================================================
 
@@ -462,6 +577,11 @@ def print_price_info(
     print(f"  [物品] {name}")
     print(f"  [标签] {tags_str}")
     print(f"  [slug] {slug}")
+    # 显示缩略图
+    if item_info:
+        local_path = download_thumb(item_info)
+        if local_path and local_path.exists():
+            print(f"  [缩略图] {local_path}")
     print(f"{'='*60}")
 
     if sells:
@@ -588,7 +708,7 @@ class PriceSearcher:
         *,
         interactive_select: bool = True,
     ) -> None:
-        """搜索物品并显示价格"""
+        """搜索物品并显示图片（不查价格）"""
         results = self.search_items(query)
 
         if not results:
@@ -597,6 +717,10 @@ class PriceSearcher:
 
         if len(results) == 1 or results[0].match_type == "exact":
             selected = results[0]
+            # 单个结果直接显示图片
+            print(f"\n[图片] 正在打开 '{selected.item.display_name(self.language)}' 的缩略图...")
+            show_thumb(selected.item)
+            return
         elif interactive_select and len(results) > 1:
             print(f"\n[搜索结果] '{query}' 的搜索结果：")
             print_search_results(results, self.language)
@@ -608,23 +732,13 @@ class PriceSearcher:
                 selected = results[idx]
             except (ValueError, IndexError):
                 selected = results[0]
+            # 用户选择后显示对应物品的图片
+            print(f"\n[图片] 正在打开 '{selected.item.display_name(self.language)}' 的缩略图...")
+            show_thumb(selected.item)
+            return  # 只显示图片，不查价格
         else:
             print_search_results(results, self.language)
             return
-
-        item = selected.item
-        slug = item.slug
-        name = item.display_name(self.language)
-
-        print(f"\n[查询] 正在查询 '{name}' ({slug}) 的价格...")
-        price_raw = self.fetch_price(slug)
-        print_price_info(slug, item, price_raw, self.language)
-
-        # 写查询日志
-        _, _, lowest_sell, highest_buy = extract_price_info(price_raw)
-        sell_count = len(price_raw.get("data", {}).get("sell", [])) if isinstance(price_raw.get("data"), dict) else 0
-        buy_count = len(price_raw.get("data", {}).get("buy", [])) if isinstance(price_raw.get("data"), dict) else 0
-        self.data_mgr.log_query(query, slug, name, lowest_sell, highest_buy, sell_count, buy_count)
 
 
 # ============================================================================
