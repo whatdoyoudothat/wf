@@ -292,21 +292,33 @@ def interactive_main() -> int:
         # 处理不带空格的组合输入，如"价格牛"、"牛价格"、"物品牛"、"牛物品"
         handled = False
         if resolved_cmd is None:
-            # 检查是否以"价格"、"物价"、"物品"开头（如"价格牛"、"物价牛"、"物品牛"）
-            for prefix in ("价格", "物价", "物品"):
+            # 检查是否以"价格"、"物价"开头（如"价格牛"、"物价牛"）→ 查价格
+            for prefix in ("价格", "物价"):
                 if cmd_lower.startswith(prefix):
                     resolved_cmd = "price"
                     first_word = prefix
                     break
-            else:
-                # 检查是否以"价格"、"物价"、"物品"结尾（如"牛价格"、"牛物价"、"牛物品"）
-                for suffix in ("价格", "物价", "物品"):
-                    if cmd_lower.endswith(suffix) and len(cmd_lower) > len(suffix):
-                        # 直接提取关键词部分作为搜索词
-                        keyword = line[:-len(suffix)]
-                        price_main([keyword])
+            if resolved_cmd is None:
+                # 检查是否以"物品"开头（如"物品牛"）→ 仅搜索不查价
+                if cmd_lower.startswith("物品"):
+                    keyword = line[len("物品"):]
+                    if keyword:
+                        price_main(["-s", keyword])
                         handled = True
-                        break
+                # 检查是否以"价格"、"物价"结尾（如"牛价格"、"牛物价"）→ 查价格
+                elif any(cmd_lower.endswith(s) and len(cmd_lower) > len(s) for s in ("价格", "物价")):
+                    for suffix in ("价格", "物价"):
+                        if cmd_lower.endswith(suffix) and len(cmd_lower) > len(suffix):
+                            keyword = line[:-len(suffix)]
+                            price_main([keyword])
+                            handled = True
+                            break
+                # 检查是否以"物品"结尾（如"牛物品"）→ 仅搜索不查价
+                elif cmd_lower.endswith("物品") and len(cmd_lower) > len("物品"):
+                    keyword = line[:-len("物品")]
+                    if keyword:
+                        price_main(["-s", keyword])
+                        handled = True
 
         if handled:
             continue
